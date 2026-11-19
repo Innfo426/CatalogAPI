@@ -1,8 +1,8 @@
 using System.Net;
 using System.Net.Http.Json;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using ProductCatalog.Api.Data;
@@ -11,22 +11,17 @@ using Xunit;
 
 namespace ProductCatalog.Tests;
 
-public class ProductUnitTests : IClassFixture<WebApplicationFactory<Program>>
+public class ProductUnitTests
 {
-    private readonly WebApplicationFactory<Program> _factory;
-
-    public ProductUnitTests(WebApplicationFactory<Program> factory)
+    private WebApplicationFactory<Program> CreateFactoryWithInMemoryDb(string dbName)
     {
-        // Un nom unique fixe pour cette classe de test afin que POST et GET partagent la même base
-        var dbName = "UnitTestingDb_" + Guid.NewGuid();
-
-        _factory = factory.WithWebHostBuilder(builder =>
+        return new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
         {
+            builder.UseEnvironment("Testing");
             builder.ConfigureServices(services =>
             {
+                // Remplacer SQL Server par une base InMemory isolée par test
                 services.RemoveAll(typeof(DbContextOptions<AppDbContext>));
-                services.RemoveAll(typeof(IDbContextOptionsConfiguration<AppDbContext>));
-
                 services.AddDbContext<AppDbContext>(options =>
                 {
                     options.UseInMemoryDatabase(dbName);
@@ -35,40 +30,65 @@ public class ProductUnitTests : IClassFixture<WebApplicationFactory<Program>>
         });
     }
 
-    // 1. Test unitaire : Ajout d'un produit (POST /api/create-product)
-    [Fact]
-    public async Task AddProduct_ReturnsCreated_WhenProductIsValid()
-    {
-        var client = _factory.CreateClient();
-        var newProduct = new Product { Name = "Clavier Mecanique", Price = 89.50m };
-
-        var response = await client.PostAsJsonAsync("/api/create-product", newProduct);
-
-        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
-        var createdProduct = await response.Content.ReadFromJsonAsync<Product>();
-        Assert.NotNull(createdProduct);
-        Assert.Equal("Clavier Mecanique", createdProduct.Name);
-        Assert.Equal(89.50m, createdProduct.Price);
-    }
-
-    // 2. Test unitaire : Listing des produits (GET /api/get-all-products)
     [Fact]
     public async Task GetAllProducts_ReturnsOkAndProductList()
     {
-        var client = _factory.CreateClient();
+        // Arrange
+        var dbName = Guid.NewGuid().ToString();
+        using var factory = CreateFactoryWithInMemoryDb(dbName);
+        var client = factory.CreateClient();
 
-        // Pré-insertion d'un produit de test
-        await client.PostAsJsonAsync("/api/create-product", new Product { Name = "Ecran 27 pouces", Price = 250.00m });
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            db.Products.AddRange(
+                new Product { Name = "Clavier Mécanique", Price = 89.99m },
+                new Product { Name = "Souris Sans Fil", Price = 45.50m }
+            );
+            await db.SaveChangesAsync();
+        }
 
-        var response = await client.GetAsync("/api/get-all-products");
+        // Act
+        var response = await client.GetAsync("/api/products");
 
+        // Assert
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var products = await response.Content.ReadFromJsonAsync<List<Product>>();
         Assert.NotNull(products);
-        Assert.NotEmpty(products);
-        Assert.Contains(products, p => p.Name == "Ecran 27 pouces");
+        Assert.Equal(2, products.Count);
+    }
+
+    [Fact]
+    public async Task CreateProduct_ReturnsCreatedAndPersistsInMemory()
+    {
+        // Arrange
+        var dbName = Guid.NewGuid().ToString();
+        using var factory = CreateFactoryWithInMemoryDb(dbName);
+        var client = factory.CreateClient();
+
+        var newProduct = new Product
+        {
+            Name = "Écran 27 pouces",
+            Price = 299.00m
+        };
+
+        // Act
+        var response = await client.PostAsJsonAsync("/api/products", newProduct);
+
+        // Assert
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var createdProduct = await response.Content.ReadFromJsonAsync<Product>();
+        Assert.NotNull(createdProduct);
+        Assert.Equal("Écran 27 pouces", createdProduct.Name);
+        Assert.True(createdProduct.Id > 0);
     }
 }
+
+
+
+
+
+
 
 
 
