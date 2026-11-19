@@ -1,0 +1,30 @@
+services:
+  catalog-db:
+    image: ://microsoft.com
+    container_name: catalog-db
+    environment:
+      - ACCEPT_EULA=Y
+      - MSSQL_SA_PASSWORD=DevOpsPass2026!#
+      - MSSQL_PID=Developer
+    ports:
+      - "1433:1433"
+    networks:
+      - catalog-net
+
+  catalog-api:
+    image: productcatalog-api:1.0
+    container_name: catalog-api
+    ports:
+      - "5025:8080"
+    environment:
+      - ConnectionStrings__DefaultConnection=Server=catalog-db;Database=ProductCatalogDb;User Id=sa;Password=DevOpsPass2026!#;TrustServerCertificate=True;
+      - ASPNETCORE_ENVIRONMENT=Development
+    depends_on:
+      - catalog-db
+    networks:
+      - catalog-net
+
+networks:
+  catalog-net:
+    name: catalog-net
+    external: true
