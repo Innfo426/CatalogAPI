@@ -54,7 +54,7 @@ public class ProductIntegrationTests : IClassFixture<WebApplicationFactory<Progr
         var product = new Product { Name = uniqueName, Price = 1299.99m };
 
         // 1. Insertion via l'endpoint API
-        var postResponse = await client.PostAsJsonAsync("/api/create-product", product);
+        var postResponse = await client.PostAsJsonAsync("/api/products", product);
         Assert.Equal(HttpStatusCode.Created, postResponse.StatusCode);
 
         // 2. Vérification directe de persistance en interrogeant la BD SQL Server
