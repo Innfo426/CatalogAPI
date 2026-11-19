@@ -1,0 +1,150 @@
+name: CI/CD Pipeline - ProductCatalog
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  # =========================================================
+  # JOB 1 : Compilation et Tests Unitaires (InMemory)
+  # =========================================================
+  unit-tests:
+    name: Build & Unit Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Récupération du code source
+        uses: actions/checkout@v4
+
+      - name: Installation du SDK .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restauration des dépendances
+        run: dotnet restore src/ProductCatalog.Api/ProductCatalog.Api.csproj
+
+      - name: Compilation de la solution
+        run: dotnet build src/ProductCatalog.Api/ProductCatalog.Api.csproj --no-restore --configuration Release
+
+      - name: Exécution des tests unitaires et génération du rapport TRX
+        run: >
+          dotnet test tests/ProductCatalog.Tests/ProductCatalog.Tests.csproj
+          --filter "FullyQualifiedName~ProductUnitTests"
+          --configuration Release
+          --logger "console;verbosity=detailed"
+          --logger "trx;LogFileName=unit-tests.trx"
+          --results-directory ./TestResults
+
+      - name: Sauvegarde des artefacts de tests unitaires
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-results
+          path: ./TestResults/unit-tests.trx
+
+      - name: Publication du résumé visuel (Tests Unitaires)
+        if: always()
+        uses: dorny/test-reporter@v1
+        with:
+          name: Résultats Tests Unitaires (.NET)
+          path: './TestResults/*.trx'
+          reporter: dotnet-trx
+          fail-on-error: false
+
+  # =========================================================
+  # JOB 2 : Tests d'Intégration avec SQL Server
+  # =========================================================
+  integration-test:
+    name: Integration Tests (SQL Server)
+    needs: [unit-tests]
+    runs-on: ubuntu-latest
+
+    services:
+      sqlserver:
+        image: ://microsoft.com
+        env:
+          ACCEPT_EULA: "Y"
+          MSSQL_SA_PASSWORD: "DevOpsPass2026!#"
+        ports:
+          - 1433:1433
+        options: >-
+          --health-cmd "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P DevOpsPass2026!# -C -Q 'SELECT 1' || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+          --health-start-period 15s
+
+    steps:
+      - name: Récupération du code source
+        uses: actions/checkout@v4
+
+      - name: Installation du SDK .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Exécution des tests d'intégration (Base SQL Server)
+        env:
+          ConnectionStrings__CatalogDbConnection: "Server=localhost,1433;Database=CatalogTestDb;User Id=sa;Password=DevOpsPass2026!#;TrustServerCertificate=True;"
+        run: >
+          dotnet test tests/ProductCatalog.Tests/ProductCatalog.Tests.csproj
+          --filter "FullyQualifiedName~ProductIntegrationTests"
+          --configuration Release
+          --logger "console;verbosity=detailed"
+          --logger "trx;LogFileName=integration-tests.trx"
+          --results-directory ./TestResults
+
+      - name: Sauvegarde des artefacts d'intégration
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-test-results
+          path: ./TestResults/integration-tests.trx
+
+      - name: Publication du résumé visuel (Tests d'Intégration)
+        if: always()
+        uses: dorny/test-reporter@v1
+        with:
+          name: Résultats Tests Intégration (.NET)
+          path: './TestResults/*.trx'
+          reporter: dotnet-trx
+          fail-on-error: false
+
+  # =========================================================
+  # JOB 3 : Déploiement Continu (Build & Push Docker Hub)
+  # =========================================================
+  build-and-push-docker:
+    name: Build & Push Docker Image
+    needs: [integration-test]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Récupération du code source
+        uses: actions/checkout@v4
+
+      - name: Connexion à Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Extraction des métadonnées et tags Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ secrets.DOCKERHUB_USERNAME }}/productcatalog-api
+          tags: |
+            type=raw,value=latest
+            type=sha,prefix=sha-
+
+      - name: Construction et publication de l'image Docker
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
