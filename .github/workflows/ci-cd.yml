@@ -15,6 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
+        id: checkout
         uses: actions/checkout@v4
 
       - name: Setup .NET SDK
@@ -46,7 +47,7 @@ jobs:
 
       - name: Publish Test Summary
         uses: dorny/test-reporter@v1
-        if: always() && steps.checkout.outcome != 'skipped'
+        if: always() && steps.checkout.outcome == 'success'
         with:
           name: 'Report - Unit Tests'
           path: './TestResults/**/*.trx'
@@ -153,3 +154,4 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+
