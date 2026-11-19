@@ -62,7 +62,7 @@ jobs:
     needs: [unit-tests]
     services:
       sqlserver:
-        image: "://microsoft.com"
+        image: ://microsoft.com
         ports:
           - 1433:1433
         env:
