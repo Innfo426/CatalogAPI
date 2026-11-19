@@ -4,9 +4,12 @@ using ProductCatalog.Api.Models;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Configuration de la base de données SQL Server
-builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+// Configuration de la base de données SQL Server (ignorée en environnement Testing)
+if (!builder.Environment.IsEnvironment("Testing"))
+{
+    builder.Services.AddDbContext<AppDbContext>(options =>
+        options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+}
 
 // Configuration de Swagger / OpenAPI
 builder.Services.AddEndpointsApiExplorer();
@@ -71,9 +74,6 @@ app.Run();
 
 // Exposition de Program pour le projet de tests (TP3 - Partie 1.2)
 public partial class Program { }
-
-
-
 
 
 
