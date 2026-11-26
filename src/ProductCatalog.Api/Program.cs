@@ -17,13 +17,13 @@ builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
 
-// Application automatique des migrations au démarrage (hors environnement de test InMemory)
+// Création automatique de la base et des tables au démarrage (hors environnement InMemory)
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     if (db.Database.IsRelational())
     {
-        db.Database.Migrate();
+        db.Database.EnsureCreated();
     }
 }
 
