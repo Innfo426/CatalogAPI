@@ -1,12 +1,10 @@
-
-
-
-FROM ://microsoft.com AS base
+ARG REGISTRY=://microsoft.com
+FROM ${REGISTRY}/dotnet/aspnet:10.0 AS base
 WORKDIR /app
 EXPOSE 8080
 USER app
 
-FROM ://microsoft.com AS build
+FROM ${REGISTRY}/dotnet/sdk:10.0 AS build
 WORKDIR /src
 
 COPY ["src/ProductCatalog.Api/ProductCatalog.Api.csproj", "ProductCatalog.Api/"]
